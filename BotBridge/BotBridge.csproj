@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <tModLoaderTargets>..\tModLoader.targets</tModLoaderTargets>
+    <tModLoaderTargets Condition="!Exists('$(tModLoaderTargets)')">$(USERPROFILE)\Documents\My Games\Terraria\tModLoader\ModSources\tModLoader.targets</tModLoaderTargets>
+  </PropertyGroup>
+  <Import Project="$(tModLoaderTargets)" />
+  <PropertyGroup>
+    <AssemblyName>BotBridge</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>
