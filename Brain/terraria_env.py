@@ -61,7 +61,11 @@ class TerrariaEnv(gym.Env):
             return json.loads(line)
 
     def _send(self, action):
-        self.sock.sendall((" ".join(str(int(a)) for a in action) + "\n").encode())
+        if self.sock is None:
+            raise ConnectionError("Not connected to Terraria")
+
+        message = " ".join(str(int(a)) for a in action) + "\n"
+        self.sock.sendall(message.encode("utf-8"))
 
     def _encode(self, s):
         hotbar = np.zeros(4, dtype=np.float32)
@@ -107,19 +111,21 @@ class TerrariaEnv(gym.Env):
         return r
 
     # Gymnasium interface 
-    def reset(self, seed=None, options=None):
+    def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
+
         if self.sock is None:
             self._connect()
 
         # The world can't be "restarted" like a simple game, so an episode starts wherever the player
         # is now. If they're dead, press nothing until they respawn.
-        while self.last["dead"]:
+        while self.last is not None and self.last["dead"]:
             self._send([0, 0, 0, 0, 0])
             self.last = self._read()
 
         self.steps = 0
         self.visited = set()
+
         return self._encode(self.last), {}
 
     def step(self, action):
@@ -135,6 +141,7 @@ class TerrariaEnv(gym.Env):
         return self._encode(s), reward, terminated, truncated, info
 
     def close(self):
-        if self.sock:
+        if self.sock is not None:
             self.sock.close()
             self.sock = None
+            self.reader = None
