@@ -1,0 +1,3 @@
+displayName = TerrariaMLBot
+author = Mazqo
+version = 0.1
