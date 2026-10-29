@@ -1,1 +1,2 @@
-Modify this file with a description of your mod.
+Lets an external Python program see the game state and control your player, so a reinforcement-learning bot can play.
+Single player only. The bot takes over your controls while the Python program is connected.
