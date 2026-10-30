@@ -15,7 +15,7 @@ namespace BotBridge
 	// The bot's "eyes" and phone line. Every few ticks: send what the player sees to Python, wait for an action back.
 	public class BridgeSystem : ModSystem
 	{
-		// Training uses 5555, watch.py uses 5556. Launch with "-botport 5556" to pick a port, otherwise the first free one is used.
+		// Training games use 5555 and up (first free one). Launch the game for watch.py with "-botport 5570" so it stays out of their way.
 		const int BasePort = 5555;
 		const int PortsToTry = 10;
 		// One decision every 4 ticks (15 per second). Deciding every single tick wastes effort, since one tick barely changes anything.
@@ -212,6 +212,7 @@ namespace BotBridge
 				dealt = bot.DamageDealt,
 				taken = bot.DamageTaken,
 				kills = bot.Kills,
+				cause = bot.DeathCause,
 			});
 		}
 	}

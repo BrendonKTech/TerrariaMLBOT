@@ -1,0 +1,236 @@
+<title>TerrariaMLBot Research Log</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="training-log.css">
+
+<main>
+  <header>
+    <span class="eyebrow">Research log · started October 29, 2026</span>
+    <h1>TerrariaMLBot Research Log</h1>
+    <p class="lede">A bot learning to play Terraria from scratch with reinforcement learning. It started in a Journey mode world and moved to classic worlds in run 3. It gets points for good outcomes and loses points for bad ones, and slowly works out what to do. This log records each change we made to the bot and what its training graphs did afterwards.</p>
+    <p class="meta">Last updated Oct 30, 2026, 8:15 AM EDT · 3 training runs · 1.12M decisions trained in total</p>
+  </header>
+
+  <section aria-labelledby="setup">
+    <span class="eyebrow">How it works</span>
+    <h2 id="setup">The setup</h2>
+    <p>A small Terraria mod acts as the bot's eyes and hands. Fifteen times a second it pauses the game, sends Python a snapshot of what the player can see, and waits for the bot to choose what to press. The bot is a small neural network trained with PPO (Proximal Policy Optimization, a standard reinforcement learning method). It tries things, sees which choices led to points, and shifts toward doing more of those.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>What it sees</th><th>What it can do</th><th>What earns or costs points</th></tr></thead>
+        <tbody><tr>
+          <td>Health, mana, speed, standing or falling, day or night, selected hotbar slot, the 5 nearest enemies, and a 15 × 11 tile map of solid ground and liquid around it</td>
+          <td>Walk left or right, jump, use the held item, aim in 8 directions or at the nearest enemy, pick hotbar slot 1–4, and (from run 2) aim near, mid or far</td>
+          <td><b>+</b> damage dealt, kills, exploring new areas, new kinds of items, staying alive (from run 4)<br><b>−</b> damage taken, dying</td>
+        </tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="runs">
+    <span class="eyebrow">Results so far</span>
+    <h2 id="runs">Three training runs</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th class="num"><span class="key s1"></span>Run 1 · original</th><th class="num"><span class="key s2"></span>Run 2 · after fixes</th><th class="num"><span class="key s3"></span>Run 3 · classic, 4 games</th></tr></thead>
+        <tbody>
+          <tr><td>Training time</td><td class="num">~1 h 40 min</td><td class="num">34 min</td><td class="num">~5 h overnight</td></tr>
+          <tr><td>Decisions trained</td><td class="num">84,050</td><td class="num">31,744</td><td class="num">1,003,520</td></tr>
+          <tr><td>Average life at the end</td><td class="num">127 s</td><td class="num">200 s (the time limit)</td><td class="num">76 s</td></tr>
+          <tr><td>Lowest average life</td><td class="num">42 s</td><td class="num">never died</td><td class="num">58 s</td></tr>
+          <tr><td>Reward per episode, lowest → end</td><td class="num">−4.7 → +5.4</td><td class="num">+3.9 → +7.0</td><td class="num">−3.6 → −3.0 (started at +7.0)</td></tr>
+          <tr><td>Still acting randomly</td><td class="num">93%</td><td class="num">95%</td><td class="num">81%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Rewards from the two runs can't be compared directly, because run 2 scores items differently and ignores hits on critters and target dummies. Compare each run's reward with itself. Survival and randomness mean the same thing in both runs. Run 3 kept run 2's brain and scoring but moved to classic characters and worlds, which are much harder, so compare its numbers with themselves too.</p>
+  </section>
+
+  <section aria-labelledby="graphs">
+    <span class="eyebrow">TensorBoard graphs</span>
+    <h2 id="graphs">How the numbers moved</h2>
+    <p>The x-axis is training progress, counted in decisions. The bot makes 15 decisions per second of game time, so 60k decisions is a little over an hour of play. Hover over or tap a chart, or focus it and use the arrow keys, to read exact values and the time each point was logged.</p>
+
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3>How long it stays alive</h3>
+        <div class="legend"><span><span class="key s1"></span>Run 1</span><span><span class="key s2"></span>Run 2</span></div>
+      </div>
+      <p class="chart-head"><span>Average episode length in seconds. An episode ends when the bot dies or reaches the 200-second limit.</span></p>
+      <div class="chart" id="chart-survival"></div>
+    </div>
+
+    <div class="pair">
+      <div class="chart-card">
+        <div class="chart-head"><h3>Reward per episode · Run 1</h3></div>
+        <div class="chart" id="chart-reward-1"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><h3>Reward per episode · Run 2</h3></div>
+        <div class="chart" id="chart-reward-2"></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3>How random its choices still are</h3>
+        <div class="legend"><span><span class="key s1"></span>Run 1</span><span><span class="key s2"></span>Run 2</span></div>
+      </div>
+      <p class="chart-head"><span>100% means it picks buttons completely at random. The number falls as the bot settles on habits. Shown as a share of the maximum, so runs with different numbers of buttons can be compared. TensorBoard calls this <code>entropy_loss</code>.</span></p>
+      <div class="chart" id="chart-random"></div>
+    </div>
+
+    <h3 class="sub-head" id="run3-graphs">Run 3: overnight in four classic games</h3>
+    <p>Run 3 is plotted on its own because it is about nine times longer than runs 1 and 2 together. It continued run 2's brain, so its x-axis counts on from run 2's 32k decisions.</p>
+    <div class="chart-card">
+      <div class="chart-head"><h3>How long it stays alive · Run 3</h3></div>
+      <div class="chart" id="chart-survival-3"></div>
+    </div>
+    <div class="pair">
+      <div class="chart-card">
+        <div class="chart-head"><h3>Reward per episode · Run 3</h3></div>
+        <div class="chart" id="chart-reward-3"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><h3>Randomness · Run 3</h3></div>
+        <div class="chart" id="chart-random-3"></div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>Where run 3's reward came from, average per episode</caption>
+        <thead><tr><th>Part</th><th class="num">First 30 min</th><th class="num">Last 30 min</th></tr></thead>
+        <tbody>
+          <tr><td>Kills</td><td class="num">+1.08</td><td class="num">+0.13</td></tr>
+          <tr><td>New kinds of items</td><td class="num">+2.03</td><td class="num">+0.80</td></tr>
+          <tr><td>Damage dealt</td><td class="num">+0.35</td><td class="num">+0.21</td></tr>
+          <tr><td>Exploring new areas</td><td class="num">+2.07</td><td class="num">+2.99</td></tr>
+          <tr><td>Damage taken</td><td class="num">−1.75</td><td class="num">−2.14</td></tr>
+          <tr><td>Dying (−5 per death)</td><td class="num">−3.17</td><td class="num">−4.63</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>Show the numbers as a table</summary>
+      <div class="table-wrap"><table id="data-table"><thead><tr><th>Run</th><th class="num">Decisions</th><th class="num">Logged at (EDT)</th><th class="num">Avg life</th><th class="num">Reward</th></tr></thead><tbody></tbody></table></div>
+    </details>
+  </section>
+
+  <section aria-labelledby="timeline">
+    <span class="eyebrow">Changelog</span>
+    <h2 id="timeline">What we changed, and what happened</h2>
+    <ol class="timeline">
+      <li>
+        <div class="when"><b>Oct 29</b>4:10 – 7:43 PM</div>
+        <div class="entry">
+          <h3><span class="tag">Build</span>Version 1 of the bot</h3>
+          <p>Built the mod (eyes and hands) and the Python trainer (brain), as described in the setup above. Episodes started wherever the player happened to be, and the item reward counted how many items were in the inventory.</p>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 29</b>8:00 – 9:47 PM</div>
+        <div class="entry">
+          <h3><span class="tag run">Run 1</span>First training run</h3>
+          <p>Trained for 84k decisions across four sessions. The bot started out dying constantly: its average life fell as low as 42 seconds. It then improved steadily, reaching 127 seconds by the end, and its reward climbed from a low of −4.7 to +5.4. Its choices went from fully random to 93% random, so it was starting to form habits.</p>
+          <div class="result"><span>Average life <b>42 s → 127 s</b></span><span>Reward <b>−4.7 → +5.4</b></span></div>
+          <p class="note">A code review afterwards found that two skills were out of reach in this version. The cursor sat about 6 tiles away, beyond pickaxe range, so the bot could not mine or place blocks. And the item reward could be farmed by placing a block and mining it back. Run 1 mostly learned to move and fight.</p>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 29</b>9:50 – 10:14 PM</div>
+        <div class="entry">
+          <h3><span class="tag">Change</span>Fixes from the review</h3>
+          <ul class="changes">
+            <li><b>Aim distance.</b> <span class="why">A new choice: aim at the tile next to the player, 3.5 tiles out, or far. The first two are within pickaxe and block reach, so mining and building became possible.</span></li>
+            <li><b>Closed reward loopholes.</b> <span class="why">Hits on target dummies (which never die), critters, statue spawns and friendly NPCs no longer count. The item reward now pays once for each new kind of item per episode instead of counting stacks.</span></li>
+            <li><b>Consistent episode starts.</b> <span class="why">Each episode now begins at the spawn point at dawn, with full health, the starting inventory and nearby enemies cleared. When every start looks the same, the bot can tell good choices apart from lucky circumstances. The mod also lets training turn enemy spawns up or down.</span></li>
+            <li><b>Separate ports.</b> <span class="why">Each game copy gets its own connection, so you can watch the bot play in one copy while it trains in another.</span></li>
+          </ul>
+          <p class="meta">The brain was started from scratch afterwards, because the new aim choice changed the set of available actions.</p>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 29</b>10:16 – 10:50 PM</div>
+        <div class="entry">
+          <h3><span class="tag run">Run 2</span>Training with the fixes</h3>
+          <p>Trained for 32k decisions. It has not died once: all of its roughly ten episodes lasted the full 200 seconds. Reward rose from +4.4 to +7.0. Its choices are still 95% random, which is normal this early. Run 1 was at about the same level at the same point.</p>
+          <div class="result"><span>Average life <b>200 s, no deaths</b></span><span>Reward <b>+4.4 → +7.0</b></span></div>
+          <p class="note">Part of this survival comes from easier starts: dawn, at spawn, with enemies cleared. That is the purpose of an early training stage. Night starts and higher spawn rates are the next difficulty steps. Ten episodes is also a small sample.</p>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 29</b>~10:55 PM</div>
+        <div class="entry">
+          <h3><span class="tag">Change</span>Better measurement</h3>
+          <ul class="changes">
+            <li><b>Reward breakdown.</b> <span class="why">Each episode's reward is now split into kills, damage dealt, damage taken, exploration, new items and deaths, and graphed separately. That shows which skills the bot is actually learning, not just whether the total went up.</span></li>
+            <li><b>One graph per run.</b> <span class="why">Each new brain gets its own TensorBoard graph, so runs no longer draw over each other.</span></li>
+          </ul>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 29</b>11:01 PM</div>
+        <div class="entry">
+          <h3><span class="tag">Change</span>Training in several games at once</h3>
+          <p>The game runs at a fixed 60 updates per second, so one copy produces about 15 decisions per second at most. Training can now use several Terraria copies at once, each on its own port, with one shared brain learning from all of them. This PC (32 GB RAM, 8-core CPU) can run about four copies, which should give roughly 4× the experience per hour: 1M decisions in about 5 hours instead of 20.</p>
+          <p class="meta">First used in run 3, below.</p>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 29–30</b>11:18 PM – 4:16 AM</div>
+        <div class="entry">
+          <h3><span class="tag run">Run 3</span>Overnight, four classic games at once</h3>
+          <p>Switched from Journey mode to four new classic characters on four small classic worlds. Enemies hit much harder there, and deaths have consequences. The brain carried on from run 2. With four games feeding one brain it trained at 55 decisions per second, about 3.5× one game, and finished 1M decisions in just under five hours.</p>
+          <p><b>It got worse.</b> In the first half hour it lived about 154 seconds per episode. By 12:23 AM that was under 100 seconds, and it ended at 76. Reward fell from +2.9 to −2.9 (first half hour against last). It nearly stopped fighting: kills fell from about 1.1 to 0.1 per episode. It also picked up fewer new items, but explored slightly more. Its choices went from 93% to 81% random, so it was settling into those habits.</p>
+          <div class="result"><span>Average life <b>200 s → 76 s</b></span><span>Reward <b>+7.0 → −3.0</b></span><span>Kills per episode <b>1.1 → 0.1</b></span></div>
+          <p class="note">Probable cause: in classic mode every death leaves a tombstone. Hundreds of deaths near spawn likely piled up enough of them to turn spawn into a Graveyard biome, where zombies spawn even in daytime. The in-game chat showed mostly zombie deaths, even though every episode started at dawn. If so, the run made its own starting area harder as it went, which fits life getting shorter all night. Nothing rewarded staying alive either, so dying early cost only the −5 penalty.</p>
+        </div>
+      </li>
+      <li>
+        <div class="when"><b>Oct 30</b>~8:00 AM</div>
+        <div class="entry">
+          <h3><span class="tag">Change</span>Fixes after run 3</h3>
+          <ul class="changes">
+            <li><b>Tombstones removed on every reset.</b> <span class="why">The world stays the same no matter how many times the bot has died in it, so a Graveyard can't build up.</span></li>
+            <li><b>Reward for staying alive.</b> <span class="why">+0.002 per decision, about +6 for a full 200-second episode. A long careful life now beats a short reckless one.</span></li>
+            <li><b>Cause of death is recorded.</b> <span class="why">The mod reports what killed the bot ("Zombie", "fell to their death", ...), and TensorBoard graphs deaths per cause. Problems now show up in the numbers instead of only in the chat log.</span></li>
+          </ul>
+          <p class="meta">The next run starts with a new brain, because run 3's brain had settled into the reckless habit.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="next">
+    <span class="eyebrow">Plan</span>
+    <h2 id="next">What comes next</h2>
+    <p>Pure trial and error is good at moment-to-moment control: moving, fighting, dodging, mining. It is poor at long chains like "gather wood, build a workbench, craft a table, build a room". So the plan mixes the two. The bot learns the control skills, and the mod handles a few long multi-step jobs for it. New abilities are unlocked one stage at a time, so the bot isn't overwhelmed with options it can't use yet.</p>
+    <ol class="plan">
+      <li><b>Item awareness.</b> The bot sees what each hotbar item does, and picks items by purpose (weapon, pickaxe, block, torch, potion) instead of slot number.</li>
+      <li><b>Mining stage.</b> Reward for digging down and finding ore.</li>
+      <li><b>Crafting.</b> A "craft this" action for about 30 early-game recipes, offered only when the recipe is actually possible.</li>
+      <li><b>Building a house.</b> First as an action the mod carries out once the bot has gathered the materials, so NPCs can move in.</li>
+      <li><b>First bosses.</b> King Slime and the Eye of Cthulhu, trained in their own stage with a fixed set of gear.</li>
+      <li><b>Progression manager.</b> A checklist that picks the next goal and tells the learned skills what to do.</li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="glossary">
+    <span class="eyebrow">Reading the graphs</span>
+    <h2 id="glossary">Terms used here</h2>
+    <dl class="glossary">
+      <dt>Decision (step)</dt><dd>One choice of buttons. The bot makes 15 per second of game time.</dd>
+      <dt>Episode</dt><dd>One attempt, ending at death or after 3,000 decisions (200 seconds). Then it starts again.</dd>
+      <dt>Reward</dt><dd>The bot's score for an episode, added up from the points listed in the setup. TensorBoard calls it <code>ep_rew_mean</code>.</dd>
+      <dt>Average life</dt><dd>Average episode length, converted to seconds. TensorBoard calls it <code>ep_len_mean</code>.</dd>
+      <dt>Randomness</dt><dd>How spread out the bot's choices are, from 100% (pure guessing) down toward 0% (always the same choice in the same situation). It should fall slowly. If it falls too fast, the bot stops trying new things.</dd>
+      <dt>Rolling average</dt><dd>TensorBoard averages the last 100 episodes, so early points cover only a few episodes and jump around more.</dd>
+    </dl>
+  </section>
+</main>
+
+<script src="training-log-data.js"></script>
+<script src="training-log.js"></script>

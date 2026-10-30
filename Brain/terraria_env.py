@@ -7,8 +7,8 @@ import numpy as np
 from gymnasium import spaces
 
 HOST = "127.0.0.1"
-TRAIN_PORT = 5555  # each Terraria instance listens on its own port, so train.py and watch.py can run side by side
-WATCH_PORT = 5556
+TRAIN_PORT = 5555  # each Terraria instance listens on its own port. Training games take 5555, 5556, ... (the mod picks the first free one)
+WATCH_PORT = 5570  # outside that range, so launch the watching game with "-botport 5570"
 GRID_W, GRID_H = 15, 11
 MAX_ENEMIES = 5
 ENEMY_RANGE_PX = 60 * 16
@@ -21,6 +21,7 @@ PENALTY_DAMAGE_TAKEN = 2.0     # times the fraction of max HP lost
 PENALTY_DEATH = 5.0            # death bad
 REWARD_NEW_AREA = 0.05         # curiosity: first visit to each 8x8-tile area
 REWARD_NEW_ITEM_TYPE = 0.5     # first time holding each kind of item this episode (a stack count would be farmable)
+REWARD_ALIVE = 0.002           # per step alive (+6 for a full episode), so a long careful life beats a short reckless one
 AREA_SIZE = 8                  # tiles per side of an "area"
 
 # How every episode starts (see BotPlayer.DoReset). These are the dials for training stages:
@@ -46,6 +47,7 @@ class TerrariaEnv(gym.Env):
         self.last = None
         self.steps = 0
         self.visited = set()
+        self.episode_parts = {}
 
     # Connection
     def _connect(self):
@@ -108,20 +110,28 @@ class TerrariaEnv(gym.Env):
         return np.concatenate([player, hotbar, enemies.ravel(), solid, liquid]).astype(np.float32)
 
     def _reward(self, prev, s):
-        r = 0.0
-        r += s["dealt"] * REWARD_PER_DAMAGE_DEALT
-        r += s["kills"] * REWARD_PER_KILL
-        r -= PENALTY_DAMAGE_TAKEN * s["taken"] / max(s["lifeMax"], 1)
-        r += s["newItems"] * REWARD_NEW_ITEM_TYPE
+        # Kept as separate parts so TensorBoard can show which ones the bot is actually earning
+        parts = {
+            "damage_dealt": s["dealt"] * REWARD_PER_DAMAGE_DEALT,
+            "kills": s["kills"] * REWARD_PER_KILL,
+            "damage_taken": -PENALTY_DAMAGE_TAKEN * s["taken"] / max(s["lifeMax"], 1),
+            "new_items": s["newItems"] * REWARD_NEW_ITEM_TYPE,
+            "exploration": 0.0,
+            "alive": 0.0 if s["dead"] else REWARD_ALIVE,
+            "death": 0.0,
+        }
 
         area = (int(s["x"]) // AREA_SIZE, int(s["y"]) // AREA_SIZE)
         if area not in self.visited:
             self.visited.add(area)
-            r += REWARD_NEW_AREA
+            parts["exploration"] = REWARD_NEW_AREA
 
         if s["dead"] and not prev["dead"]:
-            r -= PENALTY_DEATH
-        return r
+            parts["death"] = -PENALTY_DEATH
+
+        for k, v in parts.items():
+            self.episode_parts[k] = self.episode_parts.get(k, 0.0) + v
+        return sum(parts.values())
 
     # Gymnasium interface 
     def reset(self, *, seed=None, options=None):
@@ -141,6 +151,7 @@ class TerrariaEnv(gym.Env):
 
         self.steps = 0
         self.visited = set()
+        self.episode_parts = {}
 
         return self._encode(self.last), {}
 
@@ -154,6 +165,11 @@ class TerrariaEnv(gym.Env):
         terminated = s["dead"]
         truncated = self.steps >= MAX_EPISODE_STEPS    # just a time limit
         info = {"kills": s["kills"], "dealt": s["dealt"]}
+        if terminated or truncated:
+            info["reward_parts"] = dict(self.episode_parts)
+        if terminated:
+            info["death_cause"] = s.get("cause") or "unknown"  # e.g. "Zombie", "fell to their death"
+
         return self._encode(s), reward, terminated, truncated, info
 
     def close(self):

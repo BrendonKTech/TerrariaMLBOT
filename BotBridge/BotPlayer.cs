@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
+using Terraria.ID;
 using Terraria.ModLoader;
 
 namespace BotBridge
@@ -24,6 +26,7 @@ namespace BotBridge
 		public int DamageDealt;
 		public int DamageTaken;
 		public int Kills;
+		public string DeathCause = ""; // what killed the player last, e.g. "Zombie" or "fell to their death". Cleared on reset.
 
 		// Episode reset, requested by Python. Settings stick until the next reset changes them.
 		public bool PendingReset;
@@ -92,6 +95,15 @@ namespace BotBridge
 
 		public override void OnHurt(Player.HurtInfo info) {
 			DamageTaken += info.Damage;
+		}
+
+		public override void Kill(double damage, int hitDirection, bool pvp, PlayerDeathReason damageSource) {
+			if (damageSource.SourceNPCIndex >= 0)
+				DeathCause = Main.npc[damageSource.SourceNPCIndex].TypeName;
+			else if (damageSource.SourceProjectileType > 0)
+				DeathCause = Lang.GetProjectileName(damageSource.SourceProjectileType).Value;
+			else // falling, drowning, lava...: use the death message without the player's name
+				DeathCause = damageSource.GetDeathText(Player.name).ToString().Replace(Player.name, "").Trim();
 		}
 
 		public void ResetCounters() {
@@ -187,8 +199,36 @@ namespace BotBridge
 			foreach (Projectile proj in Main.projectile) {
 				if (proj.active && proj.hostile)
 					proj.Kill();
+				else if (proj.active && proj.aiStyle == ProjAIStyleID.GraveMarker) // a tombstone still falling. Removed outright, since Kill() could place it.
+					proj.active = false;
 			}
+			int tombstones = RemoveTombstones();
+			Mod.Logger.Info($"Reset {Player.name}: removed {tombstones} tombstone tiles, dayTime={Main.dayTime} time={Main.time}");
+			DeathCause = "";
 			ResetCounters();
+		}
+
+		// Classic deaths drop a tombstone, and enough of them turn the area into a Graveyard, where zombies and ghosts
+		// spawn even in daytime. Hundreds of training deaths at spawn would make every episode start in one.
+		// Returns how many tombstone tiles (4 per tombstone) were removed.
+		static int RemoveTombstones() {
+			int removed = 0;
+			for (int x = 0; x < Main.maxTilesX; x++) {
+				for (int y = 0; y < Main.maxTilesY; y++) {
+					Tile t = Main.tile[x, y];
+					if (t.HasTile && t.TileType == TileID.Tombstones) {
+						t.HasTile = false; // cleared directly: mining it would drop the tombstone as an item for the bot to pick up
+						removed++;
+					}
+				}
+			}
+			// Each tombstone keeps its epitaph in a sign slot. Free the slots whose tombstone is gone.
+			for (int i = 0; i < Main.sign.Length; i++) {
+				Sign sign = Main.sign[i];
+				if (sign != null && !Main.tile[sign.x, sign.y].HasTile)
+					Main.sign[i] = null;
+			}
+			return removed;
 		}
 	}
 
