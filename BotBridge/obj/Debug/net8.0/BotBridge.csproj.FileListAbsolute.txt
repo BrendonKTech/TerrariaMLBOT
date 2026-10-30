@@ -1,0 +1,13 @@
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\bin\Debug\net8.0\BotBridge.deps.json
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\bin\Debug\net8.0\BotBridge.dll
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\bin\Debug\net8.0\BotBridge.pdb
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.csproj.AssemblyReference.cache
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.GeneratedMSBuildEditorConfig.editorconfig
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.AssemblyInfoInputs.cache
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.AssemblyInfo.cs
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.csproj.CoreCompileInputs.cache
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.sourcelink.json
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.dll
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\refint\BotBridge.dll
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\BotBridge.pdb
+D:\Downloads\Github Projects\TerrariaMLBot\BotBridge\obj\Debug\net8.0\ref\BotBridge.dll

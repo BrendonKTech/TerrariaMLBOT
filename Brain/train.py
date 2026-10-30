@@ -6,7 +6,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
-from terraria_env import TerrariaEnv
+from terraria_env import TRAIN_PORT, TerrariaEnv
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(HERE, "models")
@@ -22,15 +22,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--steps", type=int, default=1_000_000, help="decisions to train for (15 per second of game time)")
     parser.add_argument("--fresh", action="store_true", help="ignore saved brains and start from scratch")
+    parser.add_argument("--port", type=int, default=TRAIN_PORT, help="port of the Terraria instance to train in")
     args = parser.parse_args()
 
     # Monitor records each episode's total reward and length, which is what shows up in TensorBoard
-    env = Monitor(TerrariaEnv())
+    env = Monitor(TerrariaEnv(port=args.port))
 
     path = None if args.fresh else latest_model()
     if path:
         print(f"Resuming from {path}")
-        model = PPO.load(path, env=env, tensorboard_log=LOGS_DIR)
+        try:
+            model = PPO.load(path, env=env, tensorboard_log=LOGS_DIR)
+        except ValueError as e:  # the saved brain was built for different actions/observations than the env has now
+            env.close()
+            raise SystemExit(f"{path} doesn't fit the current bot ({e}).\n"
+                             "Move the old .zip files out of models/ or run with --fresh.")
     else:
         print("Starting a brand new brain")
         model = PPO(

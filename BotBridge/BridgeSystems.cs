@@ -15,7 +15,9 @@ namespace BotBridge
 	// The bot's "eyes" and phone line. Every few ticks: send what the player sees to Python, wait for an action back.
 	public class BridgeSystem : ModSystem
 	{
-		const int Port = 5555;
+		// Training uses 5555, watch.py uses 5556. Launch with "-botport 5556" to pick a port, otherwise the first free one is used.
+		const int BasePort = 5555;
+		const int PortsToTry = 10;
 		// One decision every 4 ticks (15 per second). Deciding every single tick wastes effort, since one tick barely changes anything.
 		const int FrameSkip = 4;
 		const int MaxEnemies = 5;
@@ -31,9 +33,36 @@ namespace BotBridge
 		public override void OnWorldLoad() {
 			if (Main.netMode != NetmodeID.SinglePlayer)
 				return;
-			listener = new TcpListener(IPAddress.Loopback, Port);
-			listener.Start();
-			Main.NewText("[BotBridge] Waiting for the Python brain on port " + Port + "...", Color.Yellow);
+			listener = StartListener(out int port);
+			if (listener == null) {
+				Main.NewText("[BotBridge] Couldn't open a port for the Python brain.", Color.OrangeRed);
+				return;
+			}
+			Main.NewText("[BotBridge] Waiting for the Python brain on port " + port + "...", Color.Yellow);
+		}
+
+		// Two game instances can't share a port, so each one needs its own (e.g. one for train.py, one for watch.py)
+		static TcpListener StartListener(out int port) {
+			if (Program.LaunchParameters.TryGetValue("-botport", out string arg) && int.TryParse(arg, out port))
+				return TryListen(port);
+
+			for (port = BasePort; port < BasePort + PortsToTry; port++) {
+				TcpListener l = TryListen(port);
+				if (l != null)
+					return l;
+			}
+			return null;
+		}
+
+		static TcpListener TryListen(int port) {
+			var l = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true };
+			try {
+				l.Start();
+				return l;
+			}
+			catch (SocketException) {
+				return null;
+			}
 		}
 
 		public override void OnWorldUnload() {
@@ -53,11 +82,18 @@ namespace BotBridge
 				Accept();
 			}
 
+			Player player = Main.LocalPlayer;
+			BotPlayer bot = player.GetModPlayer<BotPlayer>();
+			if (bot.PendingReset) {
+				if (player.dead)
+					player.respawnTimer = 0; // skip the respawn wait, training time is precious
+				else
+					bot.DoReset();
+			}
+
 			if (++tick % FrameSkip != 0)
 				return;
 
-			Player player = Main.LocalPlayer;
-			BotPlayer bot = player.GetModPlayer<BotPlayer>();
 			try {
 				writer.WriteLine(BuildObservation(player, bot));
 				writer.Flush();
@@ -67,7 +103,10 @@ namespace BotBridge
 				string line = reader.ReadLine();
 				if (line == null)
 					throw new IOException("Python closed the connection");
-				ApplyAction(bot, line);
+				if (line.StartsWith("RESET"))
+					bot.RequestReset(line);
+				else
+					ApplyAction(bot, line);
 			}
 			catch (Exception e) {
 				Main.NewText("[BotBridge] Disconnected: " + e.Message, Color.OrangeRed);
@@ -82,7 +121,9 @@ namespace BotBridge
 			NetworkStream stream = client.GetStream();
 			reader = new StreamReader(stream, Encoding.UTF8);
 			writer = new StreamWriter(stream, new UTF8Encoding(false));
-			Main.LocalPlayer.GetModPlayer<BotPlayer>().BotActive = true;
+			BotPlayer bot = Main.LocalPlayer.GetModPlayer<BotPlayer>();
+			bot.BotActive = true;
+			bot.SaveLoadout();
 			Main.NewText("[BotBridge] Brain connected. The bot has control.", Color.LightGreen);
 		}
 
@@ -97,7 +138,8 @@ namespace BotBridge
 			client = null;
 		}
 
-		// Action format: "move jump use aim hotbar", e.g. "2 1 0 8 0" = run right, jump, aim at nearest enemy, slot 1
+		// Action format: "move jump use aim hotbar distance", e.g. "2 1 0 8 0 2" = run right, jump, aim at nearest enemy, slot 1, far
+		// Old 5-number actions (brains trained before aim distance existed) still work and aim far.
 		static void ApplyAction(BotPlayer bot, string line) {
 			int[] a = line.Split(' ').Select(int.Parse).ToArray();
 			bot.Move = a[0];
@@ -105,6 +147,7 @@ namespace BotBridge
 			bot.UseItem = a[2] == 1;
 			bot.Aim = a[3];
 			bot.Hotbar = a[4];
+			bot.AimDistance = a.Length > 5 ? a[5] : 2;
 		}
 
 		public static NPC NearestEnemy(Player player, float range) {
@@ -149,12 +192,6 @@ namespace BotBridge
 				}
 			}
 
-			int itemCount = 0;
-			for (int i = 0; i < 50; i++) {
-				if (!player.inventory[i].IsAir)
-					itemCount += player.inventory[i].stack;
-			}
-
 			return JsonConvert.SerializeObject(new {
 				life = player.statLife,
 				lifeMax = player.statLifeMax2,
@@ -166,9 +203,10 @@ namespace BotBridge
 				vy = player.velocity.Y,
 				grounded = player.velocity.Y == 0f,
 				dead = player.dead,
+				resetting = bot.PendingReset,
 				day = Main.dayTime,
 				hotbar = player.selectedItem,
-				items = itemCount,
+				newItems = bot.CountNewItemTypes(),
 				enemies,
 				tiles = tiles.ToString(),
 				dealt = bot.DamageDealt,

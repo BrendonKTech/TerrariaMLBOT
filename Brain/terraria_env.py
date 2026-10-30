@@ -6,7 +6,9 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-HOST, PORT = "127.0.0.1", 5555
+HOST = "127.0.0.1"
+TRAIN_PORT = 5555  # each Terraria instance listens on its own port, so train.py and watch.py can run side by side
+WATCH_PORT = 5556
 GRID_W, GRID_H = 15, 11
 MAX_ENEMIES = 5
 ENEMY_RANGE_PX = 60 * 16
@@ -18,13 +20,23 @@ REWARD_PER_KILL = 1.0          # finishing enemies off is good
 PENALTY_DAMAGE_TAKEN = 2.0     # times the fraction of max HP lost
 PENALTY_DEATH = 5.0            # death bad
 REWARD_NEW_AREA = 0.05         # curiosity: first visit to each 8x8-tile area
-REWARD_PER_ITEM = 0.1          # picking things up
+REWARD_NEW_ITEM_TYPE = 0.5     # first time holding each kind of item this episode (a stack count would be farmable)
 AREA_SIZE = 8                  # tiles per side of an "area"
 
+# How every episode starts (see BotPlayer.DoReset). These are the dials for training stages:
+# time = "day" / "night" / "keep", spawns = enemy spawn multiplier (0 = none), loadout = 1 to restore the starting inventory.
+# Enemy strength is the Journey difficulty slider, set once in-game (it's saved with the world).
+DEFAULT_RESET = {"time": "day", "spawns": 1.0, "loadout": 1}
+
+NOOP = [0, 0, 0, 0, 0, 2]
+
 class TerrariaEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, port=TRAIN_PORT, reset_options=None):
         super().__init__()
-        self.action_space = spaces.MultiDiscrete([3,2,2,9,4])
+        self.port = port
+        self.reset_options = {**DEFAULT_RESET, **(reset_options or {})}
+        # move, jump, use item, aim direction, hotbar slot, aim distance (near = mining/building, far = fighting)
+        self.action_space = spaces.MultiDiscrete([3,2,2,9,4,3])
 
         self.obs_size = 10 + MAX_ENEMIES * 4 + GRID_W * GRID_H * 2
         self.observation_space = spaces.Box(-1.0, 1.0, shape=(self.obs_size,), dtype=np.float32)
@@ -37,10 +49,10 @@ class TerrariaEnv(gym.Env):
 
     # Connection
     def _connect(self):
-        print(f"Connecting to Terraria on port {PORT} (load a world with BotBridge enabled)...")
+        print(f"Connecting to Terraria on port {self.port} (load a world with BotBridge enabled)...")
         while True:
-            try: 
-                self.sock = socket.create_connection((HOST, PORT))
+            try:
+                self.sock = socket.create_connection((HOST, self.port))
                 break
             except OSError:
                 time.sleep(2)
@@ -61,11 +73,12 @@ class TerrariaEnv(gym.Env):
             return json.loads(line)
 
     def _send(self, action):
+        self._send_line(" ".join(str(int(a)) for a in action))
+
+    def _send_line(self, line):
         if self.sock is None:
             raise ConnectionError("Not connected to Terraria")
-
-        message = " ".join(str(int(a)) for a in action) + "\n"
-        self.sock.sendall(message.encode("utf-8"))
+        self.sock.sendall((line + "\n").encode("utf-8"))
 
     def _encode(self, s):
         hotbar = np.zeros(4, dtype=np.float32)
@@ -99,7 +112,7 @@ class TerrariaEnv(gym.Env):
         r += s["dealt"] * REWARD_PER_DAMAGE_DEALT
         r += s["kills"] * REWARD_PER_KILL
         r -= PENALTY_DAMAGE_TAKEN * s["taken"] / max(s["lifeMax"], 1)
-        r += max(s["items"] - prev["items"], 0) * REWARD_PER_ITEM
+        r += s["newItems"] * REWARD_NEW_ITEM_TYPE
 
         area = (int(s["x"]) // AREA_SIZE, int(s["y"]) // AREA_SIZE)
         if area not in self.visited:
@@ -117,10 +130,13 @@ class TerrariaEnv(gym.Env):
         if self.sock is None:
             self._connect()
 
-        # The world can't be "restarted" like a simple game, so an episode starts wherever the player
-        # is now. If they're dead, press nothing until they respawn.
-        while self.last is not None and self.last["dead"]:
-            self._send([0, 0, 0, 0, 0])
+        # The world can't be restarted, so the mod fakes it: back to spawn, healed, starting kit, enemies cleared.
+        # Every episode starting the same way is what lets the bot tell good habits from lucky circumstances.
+        opts = {**self.reset_options, **((options or {}).get("reset") or {})}
+        self._send_line("RESET " + " ".join(f"{k}={v}" for k, v in opts.items()))
+        self.last = self._read()
+        while self.last["dead"] or self.last["resetting"]:
+            self._send(NOOP)
             self.last = self._read()
 
         self.steps = 0
